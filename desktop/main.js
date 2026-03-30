@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -9,6 +9,7 @@ const projectRoot = path.join(__dirname, '..');
 const envPath = path.join(projectRoot, '.env');
 
 let mainWindow;
+let tray = null;
 let bridgeInstance = null;
 let runtime = {
   logs: [],
@@ -86,6 +87,65 @@ function createRequestLogger() {
   };
 }
 
+function updateTray() {
+  if (!tray) return;
+  const status = runtime.processStatus === 'running' ? '运行中' : '已停止';
+  const health = runtime.serviceHealth === 'healthy' ? '✓' : runtime.serviceHealth === 'degraded' ? '⚠' : '';
+  const title = `Request Bridge - ${status} ${health}`;
+  tray.setTitle(title);
+  
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: '打开控制台',
+      click: () => {
+        if (mainWindow) {
+          mainWindow.show();
+          mainWindow.focus();
+        }
+      },
+    },
+    { type: 'separator' },
+    {
+      label: runtime.processStatus === 'running' ? '停止代理' : '启动代理',
+      click: async () => {
+        if (runtime.processStatus === 'running') {
+          await stopService();
+        } else {
+          await startService();
+        }
+        updateTray();
+      },
+    },
+    {
+      label: '重启代理',
+      click: async () => {
+        await restartService();
+        updateTray();
+      },
+      enabled: runtime.processStatus !== 'stopped',
+    },
+    { type: 'separator' },
+    {
+      label: '打开配置目录',
+      click: () => shell.openPath(projectRoot),
+    },
+    {
+      label: '打开 .env',
+      click: () => shell.openPath(envPath),
+    },
+    { type: 'separator' },
+    {
+      label: '退出',
+      click: () => {
+        app.isQuitting = true;
+        app.quit();
+      },
+    },
+  ]);
+  
+  tray.setContextMenu(contextMenu);
+}
+
 async function startService() {
   if (bridgeInstance) return currentStatus();
   runtime.config = safeLoadConfig();
@@ -103,6 +163,7 @@ async function startService() {
   runtime.serviceHealth = 'starting';
   pushEvent('代理已启动', `${runtime.config.host}:${runtime.config.port}`);
   mainWindow?.webContents.send('bridge:status', currentStatus());
+  updateTray();
   return currentStatus();
 }
 
@@ -118,6 +179,7 @@ async function stopService() {
   runtime.serviceHealth = 'unknown';
   pushEvent('代理已停止', '服务已关闭');
   mainWindow?.webContents.send('bridge:status', currentStatus());
+  updateTray();
   return currentStatus();
 }
 
@@ -141,6 +203,37 @@ function createWindow() {
   });
 
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  
+  // 创建托盘
+  const iconPath = path.join(__dirname, 'icon.png');
+  let trayIcon;
+  if (fs.existsSync(iconPath)) {
+    trayIcon = nativeImage.createFromPath(iconPath);
+  } else {
+    // 如果没有图标文件，使用系统默认
+    trayIcon = nativeImage.createEmpty();
+  }
+  
+  tray = new Tray(trayIcon);
+  tray.setToolTip('Request Bridge');
+  updateTray();
+  
+  // 点击托盘显示窗口
+  tray.on('click', () => {
+    if (mainWindow) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+  
+  // 窗口关闭时最小化到托盘
+  mainWindow.on('close', (event) => {
+    if (!app.isQuitting) {
+      event.preventDefault();
+      mainWindow.hide();
+      return false;
+    }
+  });
 }
 
 function runHealthCheck() {
@@ -198,6 +291,7 @@ async function saveConfigFromUi(payload) {
     pushEvent('代理已重启', '配置保存后自动重启生效');
   }
   mainWindow?.webContents.send('bridge:status', currentStatus());
+  updateTray();
   return currentStatus();
 }
 
@@ -226,6 +320,8 @@ ipcMain.handle('bridge:clear-requests', async () => {
   return currentStatus();
 });
 
+app.isQuitting = false;
+
 app.whenReady().then(() => {
   safeLoadConfig();
   createWindow();
@@ -239,4 +335,9 @@ app.on('window-all-closed', async () => {
     if (bridgeInstance) await bridgeInstance.stop();
     app.quit();
   }
+});
+
+app.on('before-quit', async () => {
+  app.isQuitting = true;
+  if (bridgeInstance) await bridgeInstance.stop();
 });

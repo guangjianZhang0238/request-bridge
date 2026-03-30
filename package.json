@@ -1,7 +1,7 @@
 {
   "name": "request-bridge",
-  "version": "0.2.0",
-  "description": "Explicit forward proxy that can remap approved upstream hosts from A to B.",
+  "version": "0.3.0",
+  "description": "Explicit forward proxy with desktop console - remap HTTP/HTTPS requests from A to B.",
   "main": "src/server.js",
   "type": "commonjs",
   "scripts": {
@@ -11,7 +11,9 @@
     "demo:client": "node scripts/demo-client.js",
     "demo": "node scripts/run-demo.js",
     "desktop": "electron desktop/main.js",
-    "pack:win": "electron-builder --win portable nsis"
+    "pack:win": "electron-builder --win portable nsis",
+    "pack:mac": "electron-builder --mac",
+    "pack:linux": "electron-builder --linux AppImage deb"
   },
   "engines": {
     "node": ">=18"
@@ -23,8 +25,10 @@
   "build": {
     "appId": "ai.openclaw.requestbridge",
     "productName": "Request Bridge",
+    "copyright": "Copyright © 2026",
     "directories": {
-      "output": "dist"
+      "output": "dist",
+      "buildResources": "build"
     },
     "files": [
       "src/**/*",
@@ -35,11 +39,58 @@
       "README.md",
       "docs/**/*"
     ],
+    "extraResources": [
+      {
+        "from": ".env.example",
+        "to": ".env.example"
+      }
+    ],
     "win": {
       "target": [
-        "portable",
-        "nsis"
-      ]
-    }
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        },
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "${productName}-${version}-${arch}-installer.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Request Bridge"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.exe"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "icon": "build/icon.icns",
+      "category": "public.app-category.utilities"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "icon": "build/icons",
+      "category": "Network"
+    },
+    "asar": true,
+    "asarUnpack": [
+      "**/*.node"
+    ]
   }
 }
