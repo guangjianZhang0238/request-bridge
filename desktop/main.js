@@ -13,6 +13,7 @@ let bridgeInstance = null;
 let runtime = {
   logs: [],
   events: [],
+  requests: [],
   config: null,
   processStatus: 'stopped',
   serviceHealth: 'unknown',
@@ -37,6 +38,12 @@ function pushEvent(title, detail) {
   mainWindow?.webContents.send('bridge:event', event);
 }
 
+function pushRequest(req) {
+  runtime.requests.push(req);
+  if (runtime.requests.length > 2000) runtime.requests.shift();
+  mainWindow?.webContents.send('bridge:request', req);
+}
+
 function currentStatus() {
   const cfg = runtime.config || safeLoadConfig();
   return {
@@ -46,6 +53,7 @@ function currentStatus() {
     startedAt: bridgeInstance?.state?.startedAt || null,
     logs: runtime.logs,
     events: runtime.events,
+    requests: runtime.requests,
     envPath,
     lastError: runtime.lastError,
     listenUrl: cfg ? `http://${cfg.host === '0.0.0.0' ? '127.0.0.1' : cfg.host}:${cfg.port}` : null,
@@ -62,15 +70,33 @@ function safeLoadConfig() {
   }
 }
 
+function createRequestLogger() {
+  return function logRequest(info) {
+    const req = {
+      time: new Date().toISOString(),
+      method: info.method || '-',
+      from: info.from || '-',
+      to: info.to || '-',
+      protocol: info.protocol || '-',
+      status: info.status || 'forwarded',
+      remapped: !!info.remapped,
+      error: info.error || null,
+    };
+    pushRequest(req);
+  };
+}
+
 async function startService() {
   if (bridgeInstance) return currentStatus();
   runtime.config = safeLoadConfig();
   if (!runtime.config) throw new Error(runtime.lastError || '配置加载失败');
   runtime.processStatus = 'starting';
+  const requestLogger = createRequestLogger();
   const instance = await startBridge({
     baseDir: projectRoot,
     config: runtime.config,
     onLog: pushLog,
+    onRequest: requestLogger,
   });
   bridgeInstance = instance;
   runtime.processStatus = 'running';
@@ -191,6 +217,11 @@ ipcMain.handle('bridge:reload-config', async () => {
 ipcMain.handle('bridge:save-config', async (_event, payload) => saveConfigFromUi(payload));
 ipcMain.handle('bridge:clear-logs', async () => {
   runtime.logs = [];
+  mainWindow?.webContents.send('bridge:status', currentStatus());
+  return currentStatus();
+});
+ipcMain.handle('bridge:clear-requests', async () => {
+  runtime.requests = [];
   mainWindow?.webContents.send('bridge:status', currentStatus());
   return currentStatus();
 });

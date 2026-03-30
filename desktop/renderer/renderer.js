@@ -1,44 +1,25 @@
 const state = {
   status: null,
   logs: [],
+  requests: [],
   filterErrors: false,
+  filterLogErrors: false,
   editingRules: [],
 };
 
 const views = {
-  dashboard: {
-    title: '控制台首页',
-    subtitle: '集中看状态、操作代理、快速排障。',
-  },
-  rules: {
-    title: '规则与配置',
-    subtitle: '图形化编辑基础配置和重映射规则。',
-  },
-  logs: {
-    title: '日志中心',
-    subtitle: '实时查看运行日志，定位转发问题。',
-  },
-  diagnostics: {
-    title: '诊断工具',
-    subtitle: '做健康检查和基础问题排查。',
-  },
-  about: {
-    title: '关于',
-    subtitle: '这版是桌面控制台骨架，面向后续打包 EXE。',
-  },
+  dashboard: { title: '控制台首页', subtitle: '集中看状态、操作代理、快速排障。' },
+  rules: { title: '规则与配置', subtitle: '图形化编辑基础配置和重映射规则。' },
+  logs: { title: '日志中心', subtitle: '实时查看运行日志，定位转发问题。' },
+  diagnostics: { title: '诊断工具', subtitle: '做健康检查和基础问题排查。' },
+  about: { title: '关于', subtitle: '这版是桌面控制台骨架，面向后续打包 EXE。' },
 };
 
-function $(selector) {
-  return document.querySelector(selector);
-}
+function $(selector) { return document.querySelector(selector); }
 
 function setView(viewName) {
-  document.querySelectorAll('.nav-item').forEach((item) => {
-    item.classList.toggle('active', item.dataset.view === viewName);
-  });
-  document.querySelectorAll('.view').forEach((view) => {
-    view.classList.toggle('active', view.dataset.view === viewName);
-  });
+  document.querySelectorAll('.nav-item').forEach(item => item.classList.toggle('active', item.dataset.view === viewName));
+  document.querySelectorAll('.view').forEach(view => view.classList.toggle('active', view.dataset.view === viewName));
   $('#view-title').textContent = views[viewName].title;
   $('#view-subtitle').textContent = views[viewName].subtitle;
 }
@@ -94,7 +75,6 @@ function renderRuleEditor() {
   }
   root.className = 'rule-editor-list';
   root.innerHTML = '';
-
   state.editingRules.forEach((rule, index) => {
     const wrap = document.createElement('div');
     wrap.className = 'rule-editor-item';
@@ -128,16 +108,14 @@ function renderRuleEditor() {
     `;
     root.appendChild(wrap);
   });
-
-  root.querySelectorAll('[data-remove-rule]').forEach((btn) => {
+  root.querySelectorAll('[data-remove-rule]').forEach(btn => {
     btn.addEventListener('click', () => {
       state.editingRules.splice(Number(btn.dataset.removeRule), 1);
       renderRuleEditor();
     });
   });
-
-  root.querySelectorAll('[data-field]').forEach((input) => {
-    input.addEventListener('input', (event) => {
+  root.querySelectorAll('[data-field]').forEach(input => {
+    input.addEventListener('input', event => {
       const index = Number(event.target.dataset.index);
       const [scope, key] = event.target.dataset.field.split('.');
       state.editingRules[index][scope][key] = event.target.value;
@@ -147,11 +125,47 @@ function renderRuleEditor() {
 
 function renderLogs() {
   const el = $('#log-output');
-  const list = state.filterErrors
-    ? state.logs.filter((entry) => entry.level === 'error' || entry.level === 'warn')
+  const list = state.filterLogErrors
+    ? state.logs.filter(entry => entry.level === 'error' || entry.level === 'warn')
     : state.logs;
-  el.textContent = list.map((entry) => entry.line).join('\n');
+  el.textContent = list.map(entry => entry.line).join('\n');
   el.scrollTop = el.scrollHeight;
+}
+
+function renderRequests() {
+  const tbody = $('#request-tbody');
+  const list = state.filterErrors
+    ? state.requests.filter(r => r.status === 'error' || r.status === 'forbidden')
+    : state.requests;
+
+  if (!list.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="7">暂无请求记录。</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = '';
+  list.slice().reverse().forEach(req => {
+    const tr = document.createElement('tr');
+    const time = new Date(req.time).toLocaleTimeString('zh-CN');
+    const method = req.method || '-';
+    const from = req.from || '-';
+    const to = req.to || '-';
+    const statusClass = req.status === 'forwarded' ? 'status-ok' : req.status === 'forbidden' ? 'status-forbidden' : 'status-error';
+    const statusText = req.status === 'forwarded' ? '转发成功' : req.status === 'forbidden' ? '禁止' : (req.error || '错误');
+    const remapText = req.remapped ? '是' : '否';
+    const duration = req.duration ? `${req.duration}ms` : '-';
+
+    tr.innerHTML = `
+      <td>${time}</td>
+      <td>${method}</td>
+      <td>${from}</td>
+      <td>${to}</td>
+      <td class="${statusClass}">${statusText}</td>
+      <td class="${req.remapped ? 'remap-yes' : 'remap-no'}">${remapText}</td>
+      <td>${duration}</td>
+    `;
+    tbody.appendChild(tr);
+  });
 }
 
 function fillConfigForm(cfg) {
@@ -163,28 +177,90 @@ function fillConfigForm(cfg) {
   $('#cfg-allowed-hosts').value = (cfg.allowedHosts || []).join(',');
 }
 
+function renderProxyStatus(processStatus, serviceHealth) {
+  const card = $('#proxy-status-card');
+  const icon = $('#proxy-status-icon');
+  const text = $('#proxy-status-text');
+  const hint = $('#proxy-status-hint');
+
+  if (processStatus === 'running') {
+    card.style.borderColor = 'var(--ok)';
+    icon.textContent = '▶';
+    text.textContent = '运行中';
+    text.style.color = 'var(--ok)';
+    hint.textContent = '代理正在监听请求';
+  } else if (processStatus === 'starting') {
+    card.style.borderColor = 'var(--warn)';
+    icon.textContent = '⏳';
+    text.textContent = '启动中';
+    text.style.color = 'var(--warn)';
+    hint.textContent = '正在初始化服务...';
+  } else {
+    card.style.borderColor = 'var(--line)';
+    icon.textContent = '⏹';
+    text.textContent = '已停止';
+    text.style.color = 'var(--muted)';
+    hint.textContent = '点击右侧按钮启动代理';
+  }
+
+  if (serviceHealth === 'healthy') {
+    $('#service-status-pill').textContent = '服务状态：健康';
+    $('#service-status-pill').style.borderColor = 'var(--ok)';
+  } else if (serviceHealth === 'degraded') {
+    $('#service-status-pill').textContent = '服务状态：异常';
+    $('#service-status-pill').style.borderColor = 'var(--warn)';
+  } else if (serviceHealth === 'down') {
+    $('#service-status-pill').textContent = '服务状态：不可达';
+    $('#service-status-pill').style.borderColor = 'var(--err)';
+  } else {
+    $('#service-status-pill').textContent = '服务状态：未知';
+    $('#service-status-pill').style.borderColor = 'var(--line)';
+  }
+
+  $('#process-status-pill').textContent = `进程状态：${processStatus === 'stopped' ? '未启动' : (processStatus === 'starting' ? '启动中' : '已启动')}`;
+}
+
+function renderMappingRules(cfg) {
+  const el = $('#mapping-rules');
+  const rules = cfg?.remapRules || [];
+  if (!rules.length) {
+    el.className = 'mapping-rules empty';
+    el.textContent = '暂无映射规则';
+    return;
+  }
+  el.className = 'mapping-rules';
+  el.innerHTML = '';
+  rules.forEach((rule, idx) => {
+    const m = rule.match || {};
+    const t = rule.target || {};
+    const from = `${m.protocol || 'https:'}//${m.host || '*'}:${m.port || '*'}${m.pathPrefix || ''}`;
+    const to = `${t.protocol || ''}//${t.host}:${t.port || '*'}${t.path || ''}`;
+    const div = document.createElement('div');
+    div.textContent = `${from} → ${to}`;
+    el.appendChild(div);
+  });
+}
+
 function renderStatus(status) {
   state.status = status;
   state.logs = status.logs || state.logs;
+  state.requests = status.requests || state.requests;
   const cfg = status.config || {};
 
-  $('#service-status-pill').textContent = `服务状态：${status.serviceHealth || 'unknown'}`;
-  $('#process-status-pill').textContent = `进程状态：${status.processStatus || 'stopped'}`;
-  $('#stat-listen').textContent = `${cfg.host || '-'}:${cfg.port || '-'}`;
-  $('#stat-rules').textContent = String((cfg.remapRules || []).length);
-  $('#stat-allowed').textContent = fmt(cfg.allowedHosts);
-  $('#stat-started').textContent = fmt(status.startedAt);
-  $('#summary-health').textContent = status.serviceHealth || 'unknown';
-  $('#summary-url').textContent = fmt(status.listenUrl);
-  $('#summary-env').textContent = fmt(status.envPath);
-  $('#summary-error').textContent = fmt(status.lastError || '无');
-  $('#config-summary').textContent = JSON.stringify(cfg, null, 2);
+  renderProxyStatus(status.processStatus, status.serviceHealth);
 
+  $('#stat-port').textContent = cfg.port || '-';
+  $('#stat-rules').textContent = String((cfg.remapRules || []).length);
+  $('#stat-requests').textContent = String(state.requests.length);
+  $('#stat-started').textContent = fmt(status.startedAt);
+
+  renderMappingRules(cfg);
   fillConfigForm(cfg);
-  state.editingRules = (cfg.remapRules || []).map((rule) => JSON.parse(JSON.stringify(rule)));
+  state.editingRules = (cfg.remapRules || []).map(rule => JSON.parse(JSON.stringify(rule)));
   renderRuleEditor();
   renderRulesPreview(cfg);
   renderLogs();
+  renderRequests();
 
   const events = status.events || [];
   const eventsContainer = $('#events');
@@ -220,8 +296,8 @@ function buildPayloadFromForm() {
     logLevel: $('#cfg-log-level').value,
     connectTimeoutMs: Number($('#cfg-connect-timeout').value || 15000),
     requestTimeoutMs: Number($('#cfg-request-timeout').value || 30000),
-    allowedHosts: $('#cfg-allowed-hosts').value.split(',').map((s) => s.trim()).filter(Boolean),
-    remapRules: state.editingRules.map((rule) => ({
+    allowedHosts: $('#cfg-allowed-hosts').value.split(',').map(s => s.trim()).filter(Boolean),
+    remapRules: state.editingRules.map(rule => ({
       match: {
         ...(rule.match.host ? { host: rule.match.host.trim() } : {}),
         ...(rule.match.port ? { port: Number(rule.match.port) } : {}),
@@ -239,7 +315,7 @@ function buildPayloadFromForm() {
 }
 
 function wireActions() {
-  document.querySelectorAll('.nav-item').forEach((item) => {
+  document.querySelectorAll('.nav-item').forEach(item => {
     item.addEventListener('click', () => setView(item.dataset.view));
   });
 
@@ -264,35 +340,58 @@ function wireActions() {
     renderLogs();
     await window.bridgeConsole.clearLogs();
   });
-  $('#filter-errors').addEventListener('change', (event) => {
+  $('#btn-clear-requests').addEventListener('click', async () => {
+    state.requests = [];
+    renderRequests();
+    await window.bridgeConsole.clearRequests();
+  });
+  $('#filter-errors').addEventListener('change', event => {
     state.filterErrors = event.target.checked;
+    renderRequests();
+  });
+  $('#filter-log-errors').addEventListener('change', event => {
+    state.filterLogErrors = event.target.checked;
     renderLogs();
   });
-
   $('#btn-health-check').addEventListener('click', async () => {
     const result = await window.bridgeConsole.healthCheck();
     $('#diagnostics-output').textContent = JSON.stringify(result, null, 2);
     refreshStatus();
   });
-
   $('#btn-diagnostics').addEventListener('click', async () => {
     const result = await window.bridgeConsole.diagnostics();
     $('#diagnostics-output').textContent = JSON.stringify(result, null, 2);
     refreshStatus();
   });
+  $('#btn-diagnostics-full').addEventListener('click', async () => {
+    const result = await window.bridgeConsole.diagnostics();
+    $('#diagnostics-output').textContent = JSON.stringify(result, null, 2);
+    refreshStatus();
+  });
+  $('#btn-health-check-full').addEventListener('click', async () => {
+    const result = await window.bridgeConsole.healthCheck();
+    $('#diagnostics-output').textContent = JSON.stringify(result, null, 2);
+    refreshStatus();
+  });
 }
 
-window.bridgeConsole.onLog((entry) => {
+window.bridgeConsole.onLog(entry => {
   state.logs.push(entry);
   if (state.logs.length > 1000) state.logs.shift();
   renderLogs();
 });
 
-window.bridgeConsole.onEvent((event) => {
+window.bridgeConsole.onEvent(event => {
   appendEvent(event);
 });
 
-window.bridgeConsole.onStatus((status) => {
+window.bridgeConsole.onRequest(req => {
+  state.requests.push(req);
+  if (state.requests.length > 2000) state.requests.shift();
+  renderRequests();
+});
+
+window.bridgeConsole.onStatus(status => {
   renderStatus(status);
 });
 

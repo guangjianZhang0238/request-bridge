@@ -36,45 +36,93 @@
         </header>
 
         <section class="view active" data-view="dashboard">
-          <div class="card-grid two-up">
-            <section class="card hero-card">
-              <div class="hero-actions">
-                <button id="btn-start" class="primary">启动代理</button>
-                <button id="btn-stop">停止代理</button>
-                <button id="btn-restart">重启代理</button>
-                <button id="btn-open-config">打开配置目录</button>
+          <!-- 顶部大状态区 -->
+          <div class="dashboard-hero">
+            <div class="hero-left">
+              <div class="proxy-status-card" id="proxy-status-card">
+                <div class="proxy-status-icon" id="proxy-status-icon">⏹</div>
+                <div class="proxy-status-info">
+                  <div class="proxy-status-label">代理状态</div>
+                  <div class="proxy-status-value" id="proxy-status-text">未启动</div>
+                  <div class="proxy-status-hint" id="proxy-status-hint">点击右侧按钮启动代理</div>
+                </div>
               </div>
-              <div class="hero-stats">
-                <div class="stat"><span>监听地址</span><strong id="stat-listen">-</strong></div>
-                <div class="stat"><span>规则数量</span><strong id="stat-rules">-</strong></div>
-                <div class="stat"><span>允许主机</span><strong id="stat-allowed">-</strong></div>
-                <div class="stat"><span>最近启动</span><strong id="stat-started">-</strong></div>
+              <div class="hero-buttons">
+                <button id="btn-start" class="btn-hero btn-start">▶ 启动代理</button>
+                <button id="btn-stop" class="btn-hero btn-stop">⏹ 停止代理</button>
+                <button id="btn-restart" class="btn-hero btn-restart">↻ 重启代理</button>
               </div>
-            </section>
-            <section class="card summary-card">
-              <h2>当前状态</h2>
-              <ul class="kv-list">
-                <li><span>服务健康</span><strong id="summary-health">未知</strong></li>
-                <li><span>HTTP 地址</span><strong id="summary-url">-</strong></li>
-                <li><span>配置文件</span><strong id="summary-env">.env</strong></li>
-                <li><span>最近错误</span><strong id="summary-error">无</strong></li>
-              </ul>
-            </section>
+            </div>
+            <div class="hero-right">
+              <div class="mapping-card">
+                <div class="mapping-title">当前映射目标</div>
+                <div id="mapping-rules" class="mapping-rules empty">暂无映射规则</div>
+              </div>
+              <div class="quick-stats">
+                <div class="quick-stat">
+                  <span>监听端口</span>
+                  <strong id="stat-port">-</strong>
+                </div>
+                <div class="quick-stat">
+                  <span>规则数量</span>
+                  <strong id="stat-rules">-</strong>
+                </div>
+                <div class="quick-stat">
+                  <span>请求数量</span>
+                  <strong id="stat-requests">0</strong>
+                </div>
+                <div class="quick-stat">
+                  <span>最近启动</span>
+                  <strong id="stat-started">-</strong>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div class="card-grid two-up">
-            <section class="card">
-              <h2>功能入口</h2>
-              <div class="feature-list">
-                <div class="feature-item"><span>代理服务控制</span><em>启动 / 停止 / 重启</em></div>
-                <div class="feature-item"><span>规则与配置</span><em>图形化编辑基础配置和规则</em></div>
-                <div class="feature-item"><span>实时日志</span><em>查看输出、筛选错误</em></div>
-                <div class="feature-item"><span>诊断工具</span><em>健康检查、端口、配置校验</em></div>
+          <!-- 请求记录表格 -->
+          <section class="card">
+            <div class="section-head">
+              <h2>请求记录</h2>
+              <div class="inline-actions">
+                <button id="btn-clear-requests">清空记录</button>
+                <label class="checkbox"><input id="filter-errors" type="checkbox" /> 只看错误</label>
               </div>
-            </section>
+            </div>
+            <div class="table-wrapper">
+              <table class="request-table" id="request-table">
+                <thead>
+                  <tr>
+                    <th class="col-time">时间</th>
+                    <th class="col-method">方法</th>
+                    <th class="col-from">来源地址</th>
+                    <th class="col-to">目标地址</th>
+                    <th class="col-status">状态</th>
+                    <th class="col-remap">重映射</th>
+                    <th class="col-duration">耗时</th>
+                  </tr>
+                </thead>
+                <tbody id="request-tbody">
+                  <tr class="empty-row">
+                    <td colspan="7">暂无请求记录，请先启动代理并发送请求。</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <!-- 最近事件 -->
+          <div class="card-grid two-up">
             <section class="card">
               <h2>最近事件</h2>
               <div id="events" class="event-list empty">还没有事件。</div>
+            </section>
+            <section class="card">
+              <h2>快速操作</h2>
+              <div class="quick-actions">
+                <button id="btn-open-config">打开配置目录</button>
+                <button id="btn-health-check">健康检查</button>
+                <button id="btn-diagnostics">执行诊断</button>
+              </div>
             </section>
           </div>
         </section>
@@ -129,7 +177,7 @@
               <h2>实时日志</h2>
               <div class="inline-actions">
                 <button id="btn-clear-logs">清空显示</button>
-                <label class="checkbox"><input id="filter-errors" type="checkbox" /> 只看 error/warn</label>
+                <label class="checkbox"><input id="filter-log-errors" type="checkbox" /> 只看 error/warn</label>
               </div>
             </div>
             <pre id="log-output" class="log-output"></pre>
@@ -141,8 +189,8 @@
             <section class="card">
               <h2>快速诊断</h2>
               <div class="stack-actions">
-                <button id="btn-diagnostics">执行诊断</button>
-                <button id="btn-health-check">健康检查</button>
+                <button id="btn-diagnostics-full">执行诊断</button>
+                <button id="btn-health-check-full">健康检查</button>
               </div>
             </section>
             <section class="card">
@@ -155,11 +203,11 @@
         <section class="view" data-view="about">
           <section class="card">
             <h2>关于这一版</h2>
-            <div class="prelike">这是第一版桌面控制台骨架：
+            <div class="prelike">这是第二版桌面控制台：
 - 目标：后续可打包成 Windows EXE
 - 技术：Electron + 原生前端
-- 现阶段重点：服务控制、状态可视化、日志、诊断、配置入口
-- 已补强：基础配置表单、规则增删改、保存回 .env
+- 现阶段重点：服务控制、状态可视化、请求记录、日志、诊断
+- 已补强：首页工具台化、请求记录表格、启动按钮突出、映射目标显示
 - 下一步建议：日志持久化、导出、托盘、安装器打包</div>
           </section>
         </section>

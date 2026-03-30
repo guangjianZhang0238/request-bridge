@@ -12,7 +12,9 @@ contextBridge.exposeInMainWorld('bridgeConsole', {
   reloadConfig: () => ipcRenderer.invoke('bridge:reload-config'),
   saveConfig: (payload) => ipcRenderer.invoke('bridge:save-config', payload),
   clearLogs: () => ipcRenderer.invoke('bridge:clear-logs'),
+  clearRequests: () => ipcRenderer.invoke('bridge:clear-requests'),
   onStatus: (handler) => ipcRenderer.on('bridge:status', (_event, payload) => handler(payload)),
   onLog: (handler) => ipcRenderer.on('bridge:log', (_event, payload) => handler(payload)),
   onEvent: (handler) => ipcRenderer.on('bridge:event', (_event, payload) => handler(payload)),
+  onRequest: (handler) => ipcRenderer.on('bridge:request', (_event, payload) => handler(payload)),
 });

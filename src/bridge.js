@@ -88,6 +88,7 @@ function startBridge(options = {}) {
     lastError: null,
   };
   const log = createLogger(config.logLevel, { onLog: options.onLog });
+  const onRequest = options.onRequest || (() => {});
 
   const server = http.createServer((req, res) => {
     if (req.url === '/healthz' && req.method === 'GET') {
@@ -114,6 +115,15 @@ function startBridge(options = {}) {
     };
 
     if (!isAllowedHost(config, original.host)) {
+      onRequest({
+        method: req.method,
+        from: `${original.protocol}//${original.host}:${original.port}${original.path}`,
+        to: '-',
+        protocol: original.protocol,
+        status: 'forbidden',
+        remapped: false,
+        error: 'forbidden_host',
+      });
       return sendJson(res, 403, { error: 'forbidden_host', host: original.host });
     }
 
@@ -133,6 +143,8 @@ function startBridge(options = {}) {
       remapped: mapped.remapped,
     });
 
+    const startTime = Date.now();
+
     const upstreamReq = client.request({
       protocol: mapped.protocol,
       hostname: mapped.host,
@@ -142,6 +154,16 @@ function startBridge(options = {}) {
       headers,
       timeout: config.requestTimeoutMs,
     }, (upstreamRes) => {
+      onRequest({
+        method: req.method,
+        from: `${original.protocol}//${original.host}:${original.port}${original.path}`,
+        to: `${mapped.protocol}//${mapped.host}:${mapped.port}${mapped.path}`,
+        protocol: original.protocol,
+        status: upstreamRes.statusCode >= 400 ? 'error' : 'forwarded',
+        statusCode: upstreamRes.statusCode,
+        remapped: mapped.remapped,
+        duration: Date.now() - startTime,
+      });
       res.writeHead(upstreamRes.statusCode || 502, upstreamRes.statusMessage, upstreamRes.headers);
       upstreamRes.pipe(res);
     });
@@ -153,6 +175,16 @@ function startBridge(options = {}) {
     upstreamReq.on('error', (err) => {
       state.lastError = err.message;
       log('error', 'forward_http_failed', { error: err.message, host: mapped.host, port: mapped.port });
+      onRequest({
+        method: req.method,
+        from: `${original.protocol}//${original.host}:${original.port}${original.path}`,
+        to: `${mapped.protocol}//${mapped.host}:${mapped.port}${mapped.path}`,
+        protocol: original.protocol,
+        status: 'error',
+        remapped: mapped.remapped,
+        error: err.message,
+        duration: Date.now() - startTime,
+      });
       if (!res.headersSent) {
         sendJson(res, 502, { error: 'bad_gateway', message: err.message });
       } else {
@@ -178,6 +210,15 @@ function startBridge(options = {}) {
     }
 
     if (!isAllowedHost(config, original.host)) {
+      onRequest({
+        method: 'CONNECT',
+        from: `${original.host}:${original.port}`,
+        to: '-',
+        protocol: 'https:',
+        status: 'forbidden',
+        remapped: false,
+        error: 'forbidden_host',
+      });
       clientSocket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
       return clientSocket.destroy();
     }
@@ -190,10 +231,21 @@ function startBridge(options = {}) {
       remapped: mapped.remapped,
     });
 
+    const startTime = Date.now();
+
     const upstreamSocket = net.connect(mapped.port, mapped.host);
     upstreamSocket.setTimeout(config.connectTimeoutMs);
 
     upstreamSocket.on('connect', () => {
+      onRequest({
+        method: 'CONNECT',
+        from: `${original.host}:${original.port}`,
+        to: `${mapped.host}:${mapped.port}`,
+        protocol: 'https:',
+        status: 'forwarded',
+        remapped: mapped.remapped,
+        duration: Date.now() - startTime,
+      });
       clientSocket.write('HTTP/1.1 200 Connection Established\r\nProxy-agent: request-bridge\r\n\r\n');
       if (head && head.length) upstreamSocket.write(head);
       upstreamSocket.pipe(clientSocket);
@@ -207,6 +259,16 @@ function startBridge(options = {}) {
     upstreamSocket.on('error', (err) => {
       state.lastError = err.message;
       log('error', 'forward_connect_failed', { error: err.message, host: mapped.host, port: mapped.port });
+      onRequest({
+        method: 'CONNECT',
+        from: `${original.host}:${original.port}`,
+        to: `${mapped.host}:${mapped.port}`,
+        protocol: 'https:',
+        status: 'error',
+        remapped: mapped.remapped,
+        error: err.message,
+        duration: Date.now() - startTime,
+      });
       try {
         clientSocket.write('HTTP/1.1 502 Bad Gateway\r\n\r\n');
       } catch {}
