@@ -1,0 +1,45 @@
+{
+  "name": "request-bridge",
+  "version": "0.2.0",
+  "description": "Explicit forward proxy that can remap approved upstream hosts from A to B.",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "check": "node --check src/server.js && node --check src/bridge.js && node --check src/config.js && node --check desktop/main.js && node --check desktop/preload.js && node --check desktop/renderer/renderer.js",
+    "demo:upstream": "node scripts/demo-upstream.js",
+    "demo:client": "node scripts/demo-client.js",
+    "demo": "node scripts/run-demo.js",
+    "desktop": "electron desktop/main.js",
+    "pack:win": "electron-builder --win portable nsis"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "electron": "^37.2.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "ai.openclaw.requestbridge",
+    "productName": "Request Bridge",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "desktop/**/*",
+      "scripts/**/*",
+      "package.json",
+      ".env.example",
+      "README.md",
+      "docs/**/*"
+    ],
+    "win": {
+      "target": [
+        "portable",
+        "nsis"
+      ]
+    }
+  }
+}
